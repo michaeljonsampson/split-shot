@@ -8,6 +8,9 @@ const config = {
 		runes: true
 	},
 	kit: {
+		paths: {
+			base: '/split-shot'
+		},
 		adapter: adapter({
 			pages: 'build',
 			assets: 'build',
