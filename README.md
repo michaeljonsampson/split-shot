@@ -3,6 +3,7 @@
 Split Shot is a Svelte game where you move a gun vertically, shoot bouncing balls, and advance through increasingly difficult rounds.
 
 Controls:
+
 - Arrow Up and Arrow Down: move the gun
 - Space: shoot
 
@@ -39,6 +40,7 @@ npm run preview
 This repository includes a GitHub Actions workflow at .github/workflows/deploy-pages.yml that builds and deploys on every push to main.
 
 Required GitHub settings:
+
 1. Open repository Settings -> Pages.
 2. In Build and deployment, set Source to GitHub Actions.
 3. Push to main.
@@ -46,5 +48,6 @@ Required GitHub settings:
 5. After success, your site will be available at your repository Pages URL.
 
 Notes:
+
 - The static output folder is build.
 - The workflow adds build/.nojekyll automatically.

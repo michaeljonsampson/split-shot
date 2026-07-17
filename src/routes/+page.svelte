@@ -20,6 +20,7 @@
 
 	const GUN_WIDTH = 36;
 	const GUN_HEIGHT = 72;
+	const TOUCH_MOVE_ZONE_WIDTH = GUN_WIDTH + 10;
 	const GUN_SPEED = 420;
 	const BULLET_SPEED = 900;
 	const BULLET_COOLDOWN_MS = 120;
@@ -55,6 +56,7 @@
 
 	let gameWidth = $state(0);
 	let gameHeight = $state(0);
+	let gameElement: HTMLDivElement | undefined;
 
 	let gunY = $state(0);
 	let bullets = $state<Bullet[]>([]);
@@ -64,12 +66,16 @@
 	let gameOverReason = $state('');
 	let isRoundTransition = $state(false);
 	let upcomingLevelNumber = $state(2);
+	let showHelpModal = $state(false);
 
 	let bulletIdCounter = 0;
 	let ballIdCounter = 0;
 	let shotsFired = $state(0);
 	let lastShotAt = 0;
 	let lastFrameAt = 0;
+	let moveTouchPointerId: number | null = null;
+	let moveTouchStartY = 0;
+	let moveTouchStartGunY = 0;
 	let roundTransitionTimeout: ReturnType<typeof setTimeout> | null = null;
 
 	// Keyboard input state: in React you'd often keep this in refs to avoid rerenders.
@@ -158,6 +164,68 @@
 				y: gunY + GUN_HEIGHT / 2
 			}
 		];
+	}
+
+	function startMove(direction: 'ArrowUp' | 'ArrowDown') {
+		pressedKeys.add(direction);
+	}
+
+	function endMove(direction: 'ArrowUp' | 'ArrowDown') {
+		pressedKeys.delete(direction);
+	}
+
+	function fireFromButton() {
+		shoot(performance.now());
+	}
+
+	function isInTouchMoveZone(clientX: number): boolean {
+		if (!gameElement) return false;
+		const rect = gameElement.getBoundingClientRect();
+		return clientX - rect.left <= TOUCH_MOVE_ZONE_WIDTH;
+	}
+
+	function startTouchMove(event: PointerEvent) {
+		if (event.pointerType !== 'touch') return;
+		moveTouchPointerId = event.pointerId;
+		moveTouchStartY = event.clientY;
+		moveTouchStartGunY = gunY;
+		event.preventDefault();
+		event.stopPropagation();
+	}
+
+	function continueTouchMove(event: PointerEvent) {
+		if (event.pointerId !== moveTouchPointerId) return;
+		const deltaY = event.clientY - moveTouchStartY;
+		const nextGunY = moveTouchStartGunY + deltaY;
+		gunY = Math.max(0, Math.min(gameHeight - GUN_HEIGHT, nextGunY));
+		event.preventDefault();
+		event.stopPropagation();
+	}
+
+	function endTouchMove(event: PointerEvent) {
+		if (event.pointerId !== moveTouchPointerId) return;
+		moveTouchPointerId = null;
+		moveTouchStartY = 0;
+		moveTouchStartGunY = gunY;
+		event.preventDefault();
+		event.stopPropagation();
+	}
+
+	function fireFromGameTap(event: PointerEvent) {
+		if (event.pointerType !== 'touch') return;
+		if (isInTouchMoveZone(event.clientX)) return;
+		shoot(performance.now());
+	}
+
+	function closeHelpModal() {
+		showHelpModal = false;
+	}
+
+	function handleHelpBackdropKeydown(event: KeyboardEvent) {
+		if (event.key === 'Escape' || event.key === 'Enter' || event.key === ' ') {
+			event.preventDefault();
+			closeHelpModal();
+		}
 	}
 
 	function circlePointCollision(ball: Ball, pointX: number, pointY: number): boolean {
@@ -349,13 +417,40 @@
 
 <main>
 	<header>
-		<h1>Split Shot: {currentLevelName}</h1>
-		<p>
-			Move with arrow keys. Shoot with space bar. Bullets left: {maxBulletsForLevel - shotsFired}.
-		</p>
+		<div class="header-copy">
+			<h1>Split Shot: {currentLevelName}</h1>
+			<p>Bullets left: {maxBulletsForLevel - shotsFired}</p>
+		</div>
+
+		<button
+			type="button"
+			class="help-button"
+			aria-label="How to play"
+			onclick={() => (showHelpModal = true)}
+		>
+			?
+		</button>
 	</header>
 
-	<div class="game" bind:clientWidth={gameWidth} bind:clientHeight={gameHeight}>
+	<div
+		class="game"
+		role="application"
+		aria-label="Game playfield"
+		bind:this={gameElement}
+		bind:clientWidth={gameWidth}
+		bind:clientHeight={gameHeight}
+		onpointerdown={fireFromGameTap}
+	>
+		<button
+			type="button"
+			class="touch-move-zone"
+			aria-label="Touch and slide to move gun"
+			onpointerdown={startTouchMove}
+			onpointermove={continueTouchMove}
+			onpointerup={endTouchMove}
+			onpointercancel={endTouchMove}
+		></button>
+
 		<div class="gun" style={`top: ${gunY}px; width: ${GUN_WIDTH}px; height: ${GUN_HEIGHT}px;`}>
 			<div class="barrel"></div>
 		</div>
@@ -387,15 +482,92 @@
 			</div>
 		{/if}
 	</div>
+
+	<div class="mobile-controls" aria-label="Mobile controls">
+		<button
+			type="button"
+			class="control-button"
+			onpointerdown={() => startMove('ArrowUp')}
+			onpointerup={() => endMove('ArrowUp')}
+			onpointercancel={() => endMove('ArrowUp')}
+			onpointerleave={() => endMove('ArrowUp')}
+		>
+			Up
+		</button>
+
+		<button type="button" class="control-button fire-button" onclick={fireFromButton}>Fire</button>
+
+		<button
+			type="button"
+			class="control-button"
+			onpointerdown={() => startMove('ArrowDown')}
+			onpointerup={() => endMove('ArrowDown')}
+			onpointercancel={() => endMove('ArrowDown')}
+			onpointerleave={() => endMove('ArrowDown')}
+		>
+			Down
+		</button>
+	</div>
+
+	{#if showHelpModal}
+		<div
+			class="help-modal-backdrop"
+			role="button"
+			aria-label="Close help"
+			tabindex="0"
+			onclick={closeHelpModal}
+			onkeydown={handleHelpBackdropKeydown}
+		>
+			<div
+				class="help-modal"
+				role="dialog"
+				aria-modal="true"
+				aria-label="How to play"
+				tabindex="-1"
+				onpointerdown={(event) => event.stopPropagation()}
+			>
+				<div class="help-modal-header">
+					<h2>How to play</h2>
+					<button
+						type="button"
+						class="help-close-button"
+						aria-label="Close help"
+						onclick={closeHelpModal}
+					>
+						×
+					</button>
+				</div>
+
+				<p>Desktop controls</p>
+				<ul>
+					<li>Arrow Up and Arrow Down to move.</li>
+					<li>Space bar to fire.</li>
+				</ul>
+
+				<p>Mobile controls</p>
+				<ul>
+					<li>Slide your finger on the left edge to move up and down.</li>
+					<li>Tap the playfield or Fire button to shoot.</li>
+				</ul>
+
+				<p>Goal</p>
+				<ul>
+					<li>Hit bouncing balls to split and clear them.</li>
+					<li>Do not let a ball hit your gun.</li>
+					<li>Do not run out of bullets.</li>
+				</ul>
+			</div>
+		</div>
+	{/if}
 </main>
 
 <style>
 	main {
 		height: 100vh;
 		display: grid;
-		grid-template-rows: auto 1fr;
-		padding: 1rem;
-		gap: 1rem;
+		grid-template-rows: auto 1fr auto;
+		padding: 0.7rem;
+		gap: 0.55rem;
 		background:
 			radial-gradient(circle at 20% 20%, #16213e 0%, transparent 30%),
 			radial-gradient(circle at 85% 10%, #0f3460 0%, transparent 25%),
@@ -403,19 +575,44 @@
 		color: #e8f0ff;
 	}
 
+	header {
+		display: flex;
+		align-items: flex-start;
+		justify-content: space-between;
+		gap: 0.5rem;
+	}
+
+	.header-copy {
+		display: grid;
+		gap: 0.1rem;
+	}
+
 	header h1 {
 		margin: 0;
-		font-size: clamp(1.4rem, 2.2vw, 2rem);
+		font-size: clamp(1rem, 1.4vw, 1.25rem);
 	}
 
 	header p {
-		margin: 0.25rem 0 0;
+		margin: 0;
+		font-size: clamp(0.8rem, 1vw, 0.9rem);
 		opacity: 0.85;
+	}
+
+	.help-button {
+		width: 2rem;
+		height: 2rem;
+		padding: 0;
+		border-radius: 9999px;
+		background: #a9d9ff;
+		font-size: 1rem;
+		line-height: 1;
+		font-weight: 800;
 	}
 
 	.game {
 		position: relative;
 		overflow: hidden;
+		touch-action: manipulation;
 		border-radius: 12px;
 		border: 1px solid #32507c;
 		box-shadow: inset 0 0 0 1px #172746;
@@ -428,6 +625,24 @@
 				transparent 1px,
 				transparent 28px
 			);
+	}
+
+	.touch-move-zone {
+		border: 0;
+		padding: 0;
+		margin: 0;
+		background: transparent;
+		color: transparent;
+		border-radius: 0;
+		cursor: default;
+		font-size: 0;
+		position: absolute;
+		left: 0;
+		top: 0;
+		bottom: 0;
+		width: 46px;
+		touch-action: none;
+		z-index: 4;
 	}
 
 	.gun {
@@ -490,10 +705,88 @@
 		color: #00182c;
 	}
 
+	.mobile-controls {
+		display: none;
+		grid-template-columns: 1fr 1fr 1fr;
+		gap: 0.6rem;
+	}
+
+	.control-button {
+		padding: 0.75rem 0.5rem;
+		font-size: 1rem;
+		font-weight: 700;
+		touch-action: none;
+		user-select: none;
+	}
+
+	.fire-button {
+		background: #ffb454;
+	}
+
+	.help-modal-backdrop {
+		position: fixed;
+		inset: 0;
+		z-index: 30;
+		display: grid;
+		place-items: center;
+		padding: 1rem;
+		background: rgba(2, 7, 18, 0.7);
+		backdrop-filter: blur(3px);
+	}
+
+	.help-modal {
+		width: min(560px, 100%);
+		max-height: min(80vh, 680px);
+		overflow: auto;
+		padding: 1rem;
+		border-radius: 12px;
+		background: #0f1b33;
+		border: 1px solid #395a8d;
+		box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
+	}
+
+	.help-modal-header {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.5rem;
+		margin-bottom: 0.25rem;
+	}
+
+	.help-modal h2 {
+		margin: 0;
+		font-size: 1.05rem;
+	}
+
+	.help-modal p {
+		margin: 0.75rem 0 0.25rem;
+		font-weight: 700;
+	}
+
+	.help-modal ul {
+		margin: 0;
+		padding-left: 1.1rem;
+		opacity: 0.92;
+	}
+
+	.help-close-button {
+		width: 1.8rem;
+		height: 1.8rem;
+		padding: 0;
+		border-radius: 9999px;
+		font-size: 1.2rem;
+		line-height: 1;
+		background: #9bcfff;
+	}
+
 	@media (max-width: 720px) {
 		main {
-			padding: 0.7rem;
-			gap: 0.75rem;
+			padding: 0.55rem;
+			gap: 0.5rem;
+		}
+
+		.mobile-controls {
+			display: grid;
 		}
 	}
 </style>
