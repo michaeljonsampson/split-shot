@@ -2,6 +2,9 @@
 	"name": "svelte-game",
 	"private": true,
 	"version": "0.0.1",
+	"engines": {
+		"node": "24.18.0"
+	},
 	"type": "module",
 	"scripts": {
 		"dev": "vite dev",
